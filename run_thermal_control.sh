@@ -1,5 +1,7 @@
 #!/bin/sh
 
+## TODO: We aren't using this. Get rid of it?
+
 export GI_TYPELIB_PATH=$GI_TYPELIB_PATH:/home/odroid/aravis/src
 export LD_LIBRARY_PATH=/home/odroid/aravis/src/.libs
 export PYTHONPATH=/home/odroid/aravis:/home/odroid/.local/lib/python2.7/site-packages
