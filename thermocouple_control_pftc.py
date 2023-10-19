@@ -47,11 +47,7 @@ def start_thermocouples():
 
     time.sleep(2)
      
-     
     return chandle1
-
-
-
 
 def read_thermocouples(chandle1):
     status = {}
@@ -59,7 +55,10 @@ def read_thermocouples(chandle1):
     temp1 = (ctypes.c_float * 9)()
     overflow = ctypes.c_int16(0)
     units = tc08.USBTC08_UNITS["USBTC08_UNITS_CENTIGRADE"]
-    status["get_single"] = tc08.usb_tc08_get_single(chandle1,ctypes.byref(temp1), ctypes.byref(overflow), units)
+    status["get_single"] = tc08.usb_tc08_get_single(chandle1,
+                                                    ctypes.byref(temp1),
+                                                    ctypes.byref(overflow),
+                                                    units)
     assert_pico2000_ok(status["get_single"])
 
     # print data
@@ -80,7 +79,6 @@ def stream_thermocouples(chandle):
     status["get_temp"] = tc08.usb_tc08_get_temp(chandle, ctypes.byref(temp_buffer), ctypes.byref(times_ms_buffer), 15, ctypes.byref(overflow), 1, 0, 0)
     assert_pico2000_ok(status["get_temp"])
     print(temp_buffer[2][1])
-
 
 # close unit
 def stop_thermocouples(chandle):

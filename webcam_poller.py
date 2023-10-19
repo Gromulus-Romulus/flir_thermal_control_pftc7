@@ -58,17 +58,12 @@ class WebcamPoller(threading.Thread):
         self.im = None
         self.ret = 0
  
- 
- 
- 
- 
     def run(self):
         global camera_visible
         while self.running:
             (ret, im) = camera_visible.read()
             self.im = im
             self.ret = ret
- 
 
 # OKAY it works
 #system = PySpin.System.GetInstance()
@@ -86,7 +81,3 @@ class WebcamPoller(threading.Thread):
 #    image_visible = wcp.im.copy()
 #    cv2.imwrite("visible"+str(i)+".png",image_visible)
 #    time.sleep(0.5)
-
-
-
-

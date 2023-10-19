@@ -3,7 +3,6 @@
 #
 # TC-08 SINGLE MODE EXAMPLE  
 
-
 import ctypes
 import numpy as np
 from picosdk.usbtc08 import usbtc08 as tc08

@@ -1,9 +1,8 @@
 #!/usr/bin/python
 
 # Definition of the AtlasI2C Class
-# Imported in thermal_control_durin.py
+# Imported in thermal_control.py and i2c.py
 # Josef Garen
-# Nathan Malamud 16 Oct 2023
 #
 
 import io
@@ -13,9 +12,7 @@ import time
 import copy
 import string
 
-# #TODO What hardware module is this referencing?
 class AtlasI2C:
-    """TODO: Need more documentation"""
 
     # the timeout needed to query readings and calibrations
     LONG_TIMEOUT = 1.5
@@ -50,7 +47,7 @@ class AtlasI2C:
         self._name = name
         self._module = moduletype
 
-	
+    # Define properties
     @property
     def long_timeout(self):
         return self._long_timeout
@@ -71,7 +68,7 @@ class AtlasI2C:
     def moduletype(self):
         return self._module
         
-        
+
     def set_i2c_address(self, addr):
         '''
         set the I2C communications to the slave specified by the address
@@ -83,12 +80,14 @@ class AtlasI2C:
         fcntl.ioctl(self.file_write, I2C_SLAVE, addr)
         self._address = addr
 
+
     def write(self, cmd):
         '''
         appends the null character and sends the string over I2C
         '''
         cmd += "\00"
         self.file_write.write(cmd.encode('latin-1'))
+
 
     def handle_raspi_glitch(self, response):
         '''
@@ -102,8 +101,10 @@ class AtlasI2C:
         else:
             return list(map(lambda x: chr(x & ~0x80), list(response)))
             
+
     def app_using_python_two(self):
         return sys.version_info[0] < 3
+
 
     def get_response(self, raw_data):
         if self.app_using_python_two():
@@ -112,6 +113,7 @@ class AtlasI2C:
             response = raw_data
 
         return response
+
 
     def response_valid(self, response):
         valid = True
@@ -128,12 +130,14 @@ class AtlasI2C:
 
         return valid, error_code
 
+
     def get_device_info(self):
         if(self._name == ""):
             return self._module + " " + str(self.address)
         else:
             return self._module + " " + str(self.address) + " " + self._name
         
+
     def read(self, num_of_bytes=31):
         '''
         reads a specified number of bytes from I2C, then parses and displays the result
@@ -153,6 +157,7 @@ class AtlasI2C:
 
         return result
 
+
     def get_command_timeout(self, command):
         timeout = None
         if command.upper().startswith(self.LONG_TIMEOUT_COMMANDS):
@@ -161,6 +166,7 @@ class AtlasI2C:
             timeout = self.short_timeout
 
         return timeout
+
 
     def query(self, command):
         '''
@@ -175,9 +181,11 @@ class AtlasI2C:
             time.sleep(current_timeout)
             return self.read()
 
+
     def close(self):
         self.file_read.close()
         self.file_write.close()
+
 
     def list_i2c_devices(self):
         '''

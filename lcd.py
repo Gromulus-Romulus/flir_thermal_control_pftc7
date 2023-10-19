@@ -66,10 +66,6 @@ def lcd_led_set(lcd_id, state):
 	wiringpi2.digitalWrite(led_pins[lcd_id],state)
 
 
-
-
-
-
 def lcd_check_buttons(delay):
 	lbutton = 0
 	rbutton = 0
@@ -84,8 +80,6 @@ def lcd_check_buttons(delay):
 		rbutton = 1
 
 	return (lbutton, rbutton)
-
-
 
 #lcd_setup()
 #lcd_clear()

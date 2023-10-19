@@ -8,6 +8,7 @@ def read_retry(sensor):
     temp = 0
     tries = 0
     while not read_status:
+
         for i in range(10):
             try:
                 rh = sensor.humidity
@@ -15,6 +16,7 @@ def read_retry(sensor):
                 time.sleep(0.01)
             except:
                 a=0
+
         try:
             rh = sensor.humidity
             temp = sensor.temperature
@@ -23,8 +25,10 @@ def read_retry(sensor):
             read_status = False
             time.sleep(0.01)
             dur = tries+1
+
         if rh == None or temp == None:
             read_status = False
             time.sleep(0.01)
             dur = tries+0.1
+
     return rh,temp,tries

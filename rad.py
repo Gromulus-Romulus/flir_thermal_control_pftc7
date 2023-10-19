@@ -14,7 +14,6 @@ TAO_COMP_MIN = 0.400
 TAO_COMP_MAX = 1.000
 
 class RadiometricData:
-
 	
 	lPixval = None # the radiometric data
 	Tkelvin = None # the output temperature data
@@ -137,7 +136,6 @@ class RadiometricData:
 		return (temp1 + temp2 + temp3)
 
 
-
 	def tempToObjSig(self, dblKelvin):
 		objSign = 0.0
 		dbl_reg = dblKelvin
@@ -164,14 +162,12 @@ class RadiometricData:
 		return( objSign)
 
 
-
 	def doUpdateCalcConst(self):
 		self.m_AtmTao = self.doCalcAtmTao()
 
 		self.m_K1 = self.doCalcK1()
 
 		self.m_K2 = self.doCalcK2(self.tempToObjSig(self.m_AmbTemp),self.tempToObjSig(self.m_AtmTemp),self.tempToObjSig(self.m_ExtOptTemp))
-
 
 
 	def imgToPow(self, lPixval):
@@ -206,7 +202,6 @@ class RadiometricData:
 		return (Tkelvin)
 	
 	
-
 	def getTempFast(self):
 		self.doUpdateCalcConst()
 
@@ -226,9 +221,9 @@ class RadiometricData:
 
 
 d = RadiometricData()
-d.lPixval = numpy.ones((640,480))*14000
+d.lPixval = numpy.ones((640, 480)) * 14000
 
 #print(d.getTemp())
 print(d.getTempFast())
-d.lPixval = numpy.ones((640,480))*13000
+d.lPixval = numpy.ones((640, 480)) * 13000
 print(d.getTempFast())

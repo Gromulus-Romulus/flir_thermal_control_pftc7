@@ -38,10 +38,6 @@ def image_worker():
 
         save_queue.task_done()
 
-
-
-
-
 num_workers = 4
 queue_size = 256
 
@@ -56,8 +52,5 @@ def initialize_queue():
         t = Thread(target=image_worker)
         t.daemon = True
         t.start()
-
-
-
 
 #q.join()       # block until all tasks are done

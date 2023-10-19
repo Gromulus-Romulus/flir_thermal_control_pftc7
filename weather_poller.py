@@ -14,6 +14,7 @@ def check_weather():
 	
 	return (status, wx_split)
 
+
 class WxPoller(threading.Thread):
 	def __init__(self):
 		threading.Thread.__init__(self)
@@ -30,4 +31,3 @@ class WxPoller(threading.Thread):
 		self.running = False
 		self.join() # wait for the thread to finish what it's doing
 		print "Done.\nExiting."
-

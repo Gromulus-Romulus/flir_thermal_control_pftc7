@@ -65,7 +65,6 @@ if not os.path.isdir(output_dir):
 else:
     print ("Found results directory")
 
-
 logfilename = "%s/log.txt" % output_dir
 logfile = open(logfilename, "a")
 #sys.stderr = logfile
@@ -79,14 +78,12 @@ def file_print(message):
     print(message)
     logfile.write("%s\n" % message)
 
-
 def closefile():
     file_print("Closing log file")
     logfile.close()
     print("Log file closed")
-
    
-def get_devices():
+def get_devices() -> list:
     device = AtlasI2C()
     device_address_list = device.list_i2c_devices()
     device_list = []
@@ -104,7 +101,7 @@ def get_devices():
         device_list.append(AtlasI2C(address = i, moduletype = moduletype, name = response))
     return device_list
 
-def get_rh_temp(dev):
+def get_rh_temp(dev) -> tuple:
     #dev.write("R")
     #time.sleep(delaytime)
     return_string = dev.query("R").replace("\x00", "")
@@ -117,7 +114,7 @@ def get_rh_temp(dev):
     #print(rh)
     #print(temp)
     
-    return rh,temp
+    return rh, temp
 
 def print_device_info(nodemap):
     """
@@ -156,7 +153,6 @@ def print_device_info(nodemap):
 def disk_free_bytes():
     stats = os.statvfs("/")
     free = stats.f_bavail * stats.f_frsize
-
     return free
 
 ## TODO: What is LCD? Is this necessary?
@@ -548,8 +544,6 @@ while counter < (25*60*60/5):
 #            device.set_float_feature_value("AtmosphericTemperature",stat_atm_temp)
 #            device.set_float_feature_value("RelativeHumidity",stat_atm_rh)
 
-
-
         # get camera stats
         if counter % 12 == 0:
             stats['AtmosphericTemperature'] = PySpin.CFloatPtr(nodemap.GetNode("AtmosphericTemperature")).GetValue()
@@ -573,15 +567,9 @@ while counter < (25*60*60/5):
             stats['R'] = PySpin.CFloatPtr(nodemap.GetNode("R")).GetValue()
             stats['X'] = PySpin.CFloatPtr(nodemap.GetNode("X")).GetValue()
 
-
-
-
-
-
         fileprefix = '%s/out_%s_%d' % (output_dir, stats['Date'], counter)
         file_print("Setting output location %s" % fileprefix)
 #        lcd.lcd_update(stats['Date'], 0)
-
 
         #buffer = stream.pop_buffer ()
         image_result = camera.GetNextImage(1000)
