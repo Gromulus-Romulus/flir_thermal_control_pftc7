@@ -14,7 +14,7 @@ TAO_COMP_MIN = 0.400
 TAO_COMP_MAX = 1.000
 
 class RadiometricData:
-	
+	"""TODO: What does this do?"""
 	lPixval = None # the radiometric data
 	Tkelvin = None # the output temperature data
 	
@@ -103,17 +103,14 @@ class RadiometricData:
 
 		return( tao)
 
-
 	def doCalcK1(self):
 		#dblVal = 1.0
-
 		dblVal = self.m_AtmTao * self.m_Emissivity * self.m_ExtOptTransm
 
 		if (dblVal > 0.0):
 			dblVal = 1/dblVal
 
 		return (dblVal)
-
 
 	def doCalcK2(self, dAmbObjSig, dAtmObjSig, dExtOptTempObjSig):
 		#double emi
@@ -134,12 +131,11 @@ class RadiometricData:
 	
 		return (temp1 + temp2 + temp3)
 
-
 	def tempToObjSig(self, dblKelvin):
 		objSign = 0.0
-		dbl_reg = dblKelvin
+		#objSign = R / (exp(B/T) - F)
 
-		# objSign = R / (exp(B/T) - F)
+		dbl_reg = dblKelvin
  
 		if (dbl_reg > 0.0):
 			dbl_reg = self.m_B / dbl_reg 
@@ -157,27 +153,20 @@ class RadiometricData:
 						# Don't get too close to a B/ln(F) (vertical) asymptote
  
 				objSign = self.m_R/(dbl_reg - self.m_F)
-	
-		return( objSign)
 
+		return(objSign)
 
 	def doUpdateCalcConst(self):
 		self.m_AtmTao = self.doCalcAtmTao()
-
 		self.m_K1 = self.doCalcK1()
-
 		self.m_K2 = self.doCalcK2(self.tempToObjSig(self.m_AmbTemp),self.tempToObjSig(self.m_AtmTemp),self.tempToObjSig(self.m_ExtOptTemp))
-
 
 	def imgToPow(self, lPixval):
 		pow = (lPixval - self.m_J0) / self.m_J1
-	
 		return (pow)
-
 
 	def powToObjSig(self, dPow):
 		return (self.m_K1 * dPow - self.m_K2)
-
 
 	def objSigToTemp(self, dObjSig):
 		Tkelvin = 0.0
@@ -200,7 +189,6 @@ class RadiometricData:
 
 		return (Tkelvin)
 	
-	
 	def getTempFast(self):
 		self.doUpdateCalcConst()
 
@@ -217,7 +205,6 @@ class RadiometricData:
 				
 		self.Tkelvin = self.m_B / numpy.log(dbl_reg)
 		return(self.Tkelvin)
-
 
 d = RadiometricData()
 d.lPixval = numpy.ones((640, 480)) * 14000

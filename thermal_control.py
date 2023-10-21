@@ -16,8 +16,10 @@ import csv
 import atexit
 import save_queue
 
-# Helper functions
-from helpers import *
+# Logging and print statements
+import logging
+logging.setLevel(logging.INFO)
+runlog = logging.getLogger()
 
 ## NO ARAVIS - we are replacing this entirely with Spinnaker
 #gi.require_version('Aravis', '0.4')
@@ -30,32 +32,52 @@ import PySpin
 ## Thermocouple controller - Pico.
 # Links Rpi w/ soil, humidity, PAR sensors.
 # Also links to reference plate.
-import thermocouple_control_pftc as tc
+import thermocouple_control as tc
 
-## Humidity sensor
+# Humidity sensor + AtlasI2C
 from AtlasI2C import (
-     AtlasI2C
+    AtlasI2C
 )
 
-## Pollers disabled (FOR NOW)
-# We may want the weather poller at another date
+## Device Pollers disabled (FOR NOW)
+# We may want the weather poller eventually.
 #from pollers import gps_poller, weather_poller, webcam_poller
-# TODO: poller folder
 
-ppfd_calib = 239.34
+# Establish result directory for output.
+# Important to note that code should be run directlty off of the USB drive.
+output_dir = os.path.expanduser(
+    f"/media/ubuntu/FLIRCAM/pftc7_thermal_data/results_\\
+        {datetime.datetime.now().strftime('%y%m%d-%H%M%S')}"
+    )
 
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-## Set device settings
+if not os.path.isdir(output_dir):
+    runlog.log(f"Creating results directory %s {output_dir}")
+    os.makedirs(output_dir)
+else:
+    runlog.log("Found results directory: %")
+
+# - - - - - - - - - #
+#    FIND CAMERA    #
+# - - - - - - - - - #
+
+# Finding the thermal camera using the PySpin interface.
+runlog.log("Finding infrared camera")
+system = PySpin.System.GetInstance()
+
+# Get current library version for PySpin.
+version = system.GetLibraryVersion()
+runlog.log('PySpin library version: %d.%d.%d.%d' %
+           (version.major, version.minor, version.type, version.build))
 
 # Retrieve list of cameras from the system
 cam_list = system.GetCameras()
 num_cameras = cam_list.GetSize()
 
 if num_cameras == 0:
-    file_print("No camera found; program exiting.")
+    runlog.log("No camera found; program exiting.")
     exit()
 elif num_cameras > 1:
-    file_print("Please connect only one camera; program exiting.")
+    runlog.log("Please connect only one camera; program exiting.")
     exit()
 
 camera = cam_list.GetByIndex(0)
@@ -64,10 +86,48 @@ nodemap_tldevice = camera.GetTLDeviceNodeMap()
 camera.Init()
 nodemap = camera.GetNodeMap()
 
-file_print("Initializing image capture settings")
+def print_device_info(nodemap):
+    """
+    This function prints the device information of the camera from the transport
+    layer; please see NodeMapInfo example for more in-depth comments on printing
+    device information from the nodemap.
+
+    :param nodemap: Transport layer device nodemap.
+    :type nodemap: INodeMap
+    :returns: True if successful, False otherwise.
+    :rtype: bool
+    """
+
+    file_print('*** DEVICE INFORMATION ***\n')
+
+    try:
+        result = True
+        node_device_information = PySpin.CCategoryPtr(nodemap.GetNode('DeviceInformation'))
+
+        if PySpin.IsAvailable(node_device_information) and PySpin.IsReadable(node_device_information):
+            features = node_device_information.GetFeatures()
+            for feature in features:
+                node_feature = PySpin.CValuePtr(feature)
+                file_print('%s: %s' % (node_feature.GetName(),
+                                  node_feature.ToString() if PySpin.IsReadable(node_feature) else 'Node not readable'))
+
+        else:
+            file_print('Device control information not available.')
+
+    except PySpin.SpinnakerException as ex:
+        file_print('Error: %s' % ex)
+        return False
+
+    return result
+
 print_device_info(nodemap_tldevice)
 
-# Ensure IR mode is selected
+# - - - - - - - - - - - #
+#    CAMERA SETTINGS    #
+# - - - - - - - - - - - #
+
+runlog.log("Initializing image capture settings")
+
 vid_src = PySpin.CEnumerationPtr(nodemap.GetNode('VideoSourceSelector'))
 vid_src_visual = vid_src.GetEntryByName("IR")
 vid_src.SetIntValue(vid_src_visual.GetValue())
@@ -99,69 +159,77 @@ node_Height.SetValue(480)
 node_Width = PySpin.CIntegerPtr(nodemap.GetNode('Width'))
 node_Width.SetValue(640)
 
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-## Establish result directory for output.
-# Important to note that code should be run directlty off of the USB drive.
-print ("Finding results directory")
+# - - - - - - - - - - - #
+#    WEATHER BOARD      #
+# - - - - - - - - - - - #
 
-output_dir = os.path.expanduser(
-    f"/media/ubuntu/FLIRCAM/pftc7_thermal_data/results_\\
-        {datetime.datetime.now().strftime('%y%m%d-%H%M%S')}"
-    )
+def print_devices(device_list, device):
+    for i in device_list:
+        if(i == device):
+            print("--> " + i.get_device_info())
+        else:
+            print(" - " + i.get_device_info())
+    
+def get_devices():
+    device = AtlasI2C()
+    device_address_list = device.list_i2c_devices()
+    device_list = []
+    
+    for i in device_address_list:
+        device.set_i2c_address(i)
+        response = device.query("I")
+        try:
+            moduletype = response.split(",")[1] 
+            response = device.query("name,?").split(",")[1]
+        except IndexError:
+            print(f""">> WARNING: device at I2C address {i} \\
+                   has not been identified as an EZO device, \\
+                   and will not be queried""") 
+            continue
+        device_list.append(AtlasI2C(address = i, moduletype = moduletype, name = response))
+    return device_list 
 
-if not os.path.isdir(output_dir):
-    print ("Creating results directory %s" % output_dir)
-    os.makedirs(output_dir)
+def get_rh_temp(dev) -> tuple:
+    return_string = dev.query("R").replace("\x00", "")
+    return_string_2 = return_string.split(" : ")
+    return_string_3 = return_string_2[1].split(",")
 
-else:
-    print ("Found results directory")
+    rh = float(return_string_3[0])
+    temp = float(return_string_3[1])
+    
+    return rh, temp
 
-logfilename = "%s/log.txt" % output_dir
-logfile = open(logfilename, "a")
+def disk_free_bytes():
+    stats = os.statvfs("/")
+    free = stats.f_bavail * stats.f_frsize
+    return free
 
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-## Weather Board Initialization
-
-file_print("Opening log file")
-os.chown(logfilename, uid, gid)
-atexit.register(closefile)
-
-file_print("Starting weather board")
+runlog.log("Starting weather board")
 
 try:
     device_list = get_devices()
     rh_sensor = device_list[0]
-    file_print("Weather board initialized")
+    runlog.log("Weather board initialized")
 except:
-    file_print("No weather board found; program exiting")
+    runlog.log("No weather board found; program exiting")
     exit()
     
 get_rh_temp(rh_sensor)
 
-file_print("Starting thermocouple DAQ board")
+runlog.log("Starting thermocouple DAQ board")
 therm = tc.start_thermocouples()
 atexit.register(tc.stop_thermocouples,therm)
 
-file_print ("Finding infrared camera")
-system = PySpin.System.GetInstance()
-
-# Get current library version
-version = system.GetLibraryVersion()
-file_print('Library version: %d.%d.%d.%d' %
-           (version.major, version.minor, version.type, version.build))
-
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-file_print("Setting acquisition mode to continuous")
+runlog.log("Setting acquisition mode to continuous")
 node_acquisition_mode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
 if not PySpin.IsAvailable(node_acquisition_mode) or not PySpin.IsWritable(node_acquisition_mode):
-    file_print('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
+    runlog.log('Unable to set acquisition mode to continuous (enum retrieval). Aborting...')
     exit()
 
 # Retrieve entry node from enumeration node
 node_acquisition_mode_continuous = node_acquisition_mode.GetEntryByName('Continuous')
 if not PySpin.IsAvailable(node_acquisition_mode_continuous) or not PySpin.IsReadable(node_acquisition_mode_continuous):
-    file_print('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
+    runlog.log('Unable to set acquisition mode to continuous (entry retrieval). Aborting...')
     exit()
 
 # Retrieve integer value from entry node
@@ -175,35 +243,27 @@ s_node_map = camera.GetTLStreamNodeMap()
 
 handling_mode = PySpin.CEnumerationPtr(s_node_map.GetNode('StreamBufferHandlingMode'))
 if not PySpin.IsAvailable(handling_mode) or not PySpin.IsWritable(handling_mode):
-    file_print('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
+    runlog.log('Unable to set Buffer Handling mode (node retrieval). Aborting...\n')
     exit()
 
 handling_mode_entry = PySpin.CEnumEntryPtr(handling_mode.GetCurrentEntry())
 if not PySpin.IsAvailable(handling_mode_entry) or not PySpin.IsReadable(handling_mode_entry):
-    file_print('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
+    runlog.log('Unable to set Buffer Handling mode (Entry retrieval). Aborting...\n')
     exit()
 
 handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
 handling_mode.SetIntValue(handling_mode_entry.GetValue())
-file_print('Buffer Handling Mode has been set to %s' % handling_mode_entry.GetDisplayName())
+runlog.log('Buffer Handling Mode has been set to %s' % handling_mode_entry.GetDisplayName())
 
-file_print( "Start thermal acquisition")
+runlog.log("Start thermal acquisition")
 camera.BeginAcquisition()
 
-file_print ("Creating save queue")
+runlog.log("Creating save queue")
 save_queue.initialize_queue()
-def queue_close():
-    file_print("Waiting for last images to save")
-    save_queue.save_queue.join()
-    file_print("All images saved")
-
-atexit.register(queue_close)
-#atexit.register(closefile)
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-## Main loop
-#
-file_print( "Entering main loop")
+
+runlog.log( "Entering main loop")
 counter = 0
 time_start = time.time()
 
@@ -213,14 +273,16 @@ time_start = time.time()
 stats = {}
 
 program_running = True
-program_paused = False
 program_throttled = True
+
+# In the future, may be nice to have a way
+# to pause the program.
+#program_paused = False
 
 # Grab nodes used later to perform autofocus and non-uniformity corrections
 nuc_node = PySpin.CCommandPtr(nodemap.GetNode("NUCAction"))
 auto_focus_node = PySpin.CCommandPtr(nodemap.GetNode("AutoFocus"))
 
-# set NUCMode = "Off" (enum); set AutoFocusMethod = "Fine" (enum)
 node_NUCMode = PySpin.CEnumerationPtr(nodemap.GetNode('NUCMode'))
 node_NUCMode_Off = node_NUCMode.GetEntryByName("Off")
 node_NUCMode.SetIntValue(node_NUCMode_Off.GetValue())
@@ -234,7 +296,7 @@ node_AutoFocusMethod.SetIntValue(node_AutoFocusMethod_Fine.GetValue())
 # number of frames. It would also be nice to specify somewhere the desired framerate.
 # Nathan: ideally, this could be done at the beginning of the file or with a pi.config file.
 
-# TODO: Time is recorded using sleep statements.
+# Time is recorded using sleep statements.
 # Number of images
 # 25 hours -> number of seconds in 25 hours
 # Take an image every 5 seconds
@@ -243,37 +305,39 @@ IMAGE_PER_SECOND = 25*60*60/5
 while counter < (IMAGE_PER_SECOND):
 
     if program_throttled==True:
-        time.sleep(5)     # Sleep time of 5 seconds           
+        time.sleep(5) # Sleep time of 5 seconds           
 
     else:   
         if counter % 12 == 0:
             fps = counter / (time.time() - time_start)
-            file_print("**** FPS = %.3f" % fps)
+            runlog.log("**** FPS = %.3f" % fps)
 
             freedisk_gb = float(disk_free_bytes()) / 1024 / 1024 / 1024
-            file_print("**** Free: %.2f GB" % freedisk_gb)
+            runlog.log("**** Free: %.2f GB" % freedisk_gb)
 
             if freedisk_gb < 0.5:
-                file_print("Exiting, disk full")
+                runlog.log("Exiting, disk full")
                 exit()
 
         if counter % 24 == 0:
-            file_print('Non-uniformity correction')
+            runlog.log('Non-uniformity correction')
             nuc_node.Execute()
             time.sleep(2)
 
         if counter % 24 == 0:
-            file_print('Autofocus')
+            runlog.log('Autofocus')
             auto_focus_node.Execute()
             time.sleep(3)
             distance = PySpin.CFloatPtr(nodemap.GetNode('FocusDistance')).GetValue()
             PySpin.CFloatPtr(nodemap.GetNode('ObjectDistance')).SetValue(distance)
-            file_print("Setting object distance to %f meters" % distance)
+            runlog.log("Setting object distance to %f meters" % distance)
 
         # get weather stats     
         LOG_FREQ = 1
+        PPFD_CALIB = 239.34 # for the PAR sensor
+
         if counter % LOG_FREQ == 0:
-            file_print("Measuring ambient temperature and humidity")
+            runlog.log("Measuring ambient temperature and humidity")
 
             try:
                 wx_rh, wx_temp = get_rh_temp(rh_sensor)
@@ -282,7 +346,7 @@ while counter < (IMAGE_PER_SECOND):
             except:
                 stats['wx_temp_air_c'] = -999
                 stats['wx_rel_hum'] = -999
-                file_print("Error reading RH and T")
+                runlog.log("Error reading RH and T")
             
             [   tc_soil1_c,
                 tc_soil2_c,
@@ -292,32 +356,33 @@ while counter < (IMAGE_PER_SECOND):
                 tc_black_c
              ] = tc.read_thermocouples(therm)
 
+            ## Option for recording data from soil sensors
             #stats['tc_soil1_c'] = tc_soil1_c
             #stats['tc_soil2_c'] = tc_soil2_c
             #stats['tc_soil3_c'] = tc_soil3_c
             stats['tc_amb_c'] = tc_amb_c
             stats['tc_black_c'] = tc_black_c
             stats['ppfd_mV_raw'] = ppfd_mV
-            stats['ppfd_umol_m2_s'] = ppfd_mV*ppfd_calib
+            stats['ppfd_umol_m2_s'] = ppfd_mV * PPFD_CALIB
 
         # get current date
         stats['Date'] = datetime.datetime.now().strftime('%y%m%d-%H%M%S')
 
         if counter % 12 == 0:
-            file_print("Adjusting camera settings based on current T and RH")
+            runlog.log("Adjusting camera settings based on current T and RH")
             try:
                 stat_atm_temp = float(stats['wx_temp_air_c']) + 273.15
                 PySpin.CFloatPtr(nodemap.GetNode('AtmosphericTemperature')).SetValue(stat_atm_temp)            
             except:
                 stat_atm_temp = -999
-                file_print("Temperature error")
+                runlog.log("Temperature error")
 
             try:
                 stat_atm_rh  = float(stats['wx_rel_hum'])
                 PySpin.CFloatPtr(nodemap.GetNode('RelativeHumidity')).SetValue(stat_atm_rh)
             except:
                 stat_atm_rh = -999
-                file_print("RH error")
+                runlog.log("RH error")
                 
         # get camera stats every twelth iteration
         if counter % 12 == 0:
@@ -343,7 +408,7 @@ while counter < (IMAGE_PER_SECOND):
             stats['X'] = PySpin.CFloatPtr(nodemap.GetNode("X")).GetValue()
 
         fileprefix = '%s/out_%s_%d' % (output_dir, stats['Date'], counter)
-        file_print("Setting output location %s" % fileprefix)
+        runlog.log("Setting output location %s" % fileprefix)
 
         image_result = camera.GetNextImage(1000)
 
@@ -351,31 +416,24 @@ while counter < (IMAGE_PER_SECOND):
             print('Image incomplete with image status %d ...' % image_result.GetImageStatus())
 
         else:
-            file_print('Reading infrared image data')
+            runlog.log('Reading infrared image data')
             data_infrared = image_result.GetNDArray()
-            #img = numpy.fromstring(ctypes.string_at(buffer.data_address(), buffer.size), dtype=numpy.uint16).reshape(480,640)
-            #data_infrared = numpy.ctypeslib.as_array(ctypes.cast(buffer.get_data(), ctypes.POINTER(ctypes.c_uint16)), (buffer.get_image_height(), buffer.get_image_width()))
-            #data_infrared = data_infrared.copy()
-            #print(data_infrared)
 
-            file_print('Reading visible image data')
-            #ret,image_visible = camera_visible.read()
-            #image_visible = image_visible.copy()
+            runlog.log('Reading visible image data')
             image_visible = wcp.im.copy()       
 
-            file_print("Sending data to queue")
-            save_queue.save_queue.put( (data_infrared, image_visible, fileprefix))#, uid, gid) )
+            runlog.log("Sending data to queue")
+            save_queue.save_queue.put( (data_infrared, image_visible, fileprefix))
 
             # Write data from global stats dictionary
             writer = csv.writer(open(fileprefix + '-stats.csv', 'w'), delimiter=',')
             writer.writerow(stats.keys())
             writer.writerow(stats.values())
 
-            file_print("Summarizing data")
+            runlog.log("Summarizing data")
             stat_mean = float(data_infrared.mean()) / 100.0 - 273.15 # Temp conversion 
-            file_print("Mean value = %.3f" % stat_mean)
+            runlog.log("Mean value = %.3f" % stat_mean)
 
-            #stream.push_buffer(buffer)
             image_result.Release()
 
         counter += 1
@@ -383,13 +441,13 @@ while counter < (IMAGE_PER_SECOND):
 # Deinitialize and release all cameras
 # TODO: run garbage collection checking
 # make sure all object references are cleaned up.
-#
-camera.EndAcquisition()
+
 camera.DeInit()
 del camera
 cam_list.Clear()
 system.ReleaseInstance()
-file_print("Stopping acquisition")
+runlog.log("Stopping acquisition")
+
 #queue_close()
 #closefile()
 #tc.stop_thermocouples(therm)
