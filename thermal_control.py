@@ -10,6 +10,7 @@
 #
 # TODO: Go over commented sections. Delete junk?
 
+# TODO: update dependencies
 import pwd
 import sys
 import time
@@ -33,9 +34,14 @@ import board
 #import adafruit_si7021
 #import device_mgmt
 
+# TODO: draw dependency diagram - which scripts import which scripts
+
 ## NO ARAVIS - we are replacing this entirely with Spinnaker
+# Aravis was the original interface for odroid
+# Spinnaker is our interface for raspberry pi.
 #gi.require_version('Aravis', '0.4')
 #from gi.repository import Aravis
+
 from AtlasI2C import (
      AtlasI2C
 )
@@ -43,6 +49,7 @@ from AtlasI2C import (
 ## This functionality disabled (FOR NOW) - at least we might want the weather poller
 #import gps_poller
 #import weather_poller
+# TODO: poller folder
 import webcam_poller
 
 #uid = pwd.getpwnam('odroid').pw_uid
@@ -56,7 +63,7 @@ ppfd_calib = 239.34
 print ("Finding results directory")
 #output_dir = os.path.expanduser("/home/ubuntu/results_%s" % datetime.datetime.now().strftime('%y%m%d-%H%M%S'))
 #output_dir = os.path.expanduser("testdir")
-output_dir = os.path.expanduser("/media/ubuntu/FLIRCAM/DURIN_data/results_%s" % datetime.datetime.now().strftime('%y%m%d-%H%M%S'))
+output_dir = os.path.expanduser("/media/ubuntu/FLIRCAM/pftc7_thermal_data/results_%s" % datetime.datetime.now().strftime('%y%m%d-%H%M%S'))
 #output_dir = os.path.expanduser("/home/licor_thermal_data/results_%s" % datetime.datetime.now().strftime('%y%m%d-%H%M%S'))
 if not os.path.isdir(output_dir):
     print ("Creating results directory %s" % output_dir)
@@ -251,6 +258,11 @@ system = PySpin.System.GetInstance()
 version = system.GetLibraryVersion()
 file_print('Library version: %d.%d.%d.%d' % (version.major, version.minor, version.type, version.build))
 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+## Set device settings
+#  TODO: Shouldn't this be at the top of the script?
+#
+
 # Retrieve list of cameras from the system
 cam_list = system.GetCameras()
 num_cameras = cam_list.GetSize()
@@ -271,11 +283,6 @@ nodemap = camera.GetNodeMap()
 file_print ("Initializing image capture settings")
 print_device_info(nodemap_tldevice)
 
-# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-## Set device settings
-#  TODO: Shouldn't this be at the top of the script?
-#
-
 # Ensure IR mode is selected
 vid_src = PySpin.CEnumerationPtr(nodemap.GetNode('VideoSourceSelector'))
 vid_src_visual = vid_src.GetEntryByName("IR")
@@ -288,7 +295,6 @@ node_pixel_format.SetIntValue(node_pixel_format_mono16.GetValue())
 
 # Set IR Pixel format to 0.01K Tlinear (IRFormat = "TemperatureLinear10mK")
 node_IRFormat = PySpin.CEnumerationPtr(nodemap.GetNode('IRFormat'))
-#node_IRFormat_TL10mK = node_IRFormat.GetEntryByName("Radiometric")
 node_IRFormat_TL10mK = node_IRFormat.GetEntryByName("Radiometric")
 node_IRFormat.SetIntValue(node_IRFormat_TL10mK.GetValue())
 
@@ -346,7 +352,6 @@ handling_mode_entry = handling_mode.GetEntryByName('NewestOnly')
 handling_mode.SetIntValue(handling_mode_entry.GetValue())
 file_print('Buffer Handling Mode has been set to %s' % handling_mode_entry.GetDisplayName())
 
-
 file_print( "Start thermal acquisition")
 camera.BeginAcquisition()
 
@@ -359,7 +364,6 @@ def queue_close():
 
 atexit.register(queue_close)
 #atexit.register(closefile)
-
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ## Set up web cam
@@ -391,17 +395,21 @@ except:
 file_print( "Entering main loop")
 counter = 0
 time_start = time.time()
+
+# Stats dictionary will hold all recorded variables
+# through loop iterations. Data held in the dictionary
+# will be written as csv data.
 stats = {}
 
 program_running = True
-program_paused = False #True
+program_paused = False
 program_throttled = True
 
 # Grab nodes used later to perform autofocus and non-uniformity corrections
 nuc_node = PySpin.CCommandPtr(nodemap.GetNode("NUCAction"))
 auto_focus_node = PySpin.CCommandPtr(nodemap.GetNode("AutoFocus"))
 
-### set NUCMode = "Off" (enum); set AutoFocusMethod = "Fine" (enum)
+# set NUCMode = "Off" (enum); set AutoFocusMethod = "Fine" (enum)
 node_NUCMode = PySpin.CEnumerationPtr(nodemap.GetNode('NUCMode'))
 node_NUCMode_Off = node_NUCMode.GetEntryByName("Off")
 node_NUCMode.SetIntValue(node_NUCMode_Off.GetValue())
@@ -413,9 +421,15 @@ node_AutoFocusMethod.SetIntValue(node_AutoFocusMethod_Fine.GetValue())
 # TODO: It might be nice to have a section where you can specify how you want acquisition to
 # occur - e.g. continuous until an exit code is pressed, or for a fixed time or a fixed
 # number of frames. It would also be nice to specify somewhere the desired framerate.
+# Nathan: ideally, this could be done at the beginning of the file or with a pi.config file.
 
-# TODO: What are the units for this counter?
-while counter < (25*60*60/5):
+# TODO: Time is recorded using sleep statements.
+# Number of images
+# 25 hours -> number of seconds in 25 hours
+# Take an image every 5 seconds
+IMAGE_PER_SECOND = 25*60*60/5
+
+while counter < (IMAGE_PER_SECOND):
 #while(program_running==True): # Potential infinite loop
 #    (b_left, b_right) = lcd.lcd_check_buttons(50)
 #    if b_left == True:
@@ -429,12 +443,12 @@ while counter < (25*60*60/5):
 #        os.system("sudo shutdown now -h")
 
     if program_throttled==True:
-        time.sleep(5)                
+        time.sleep(5)     # Sleep time of 5 seconds           
 #            lcd.lcd_led_set(6,i%2)
 #    else:
 #        lcd.lcd_led_set(6,1)
 
-    if program_paused==True:
+    if program_paused==True: # TODO: No way to pause program
 #        lcd.lcd_update("Paused",0)
         time.sleep(1)
     else:   
@@ -470,11 +484,10 @@ while counter < (25*60*60/5):
         # get weather stats     
         #if counter % 12 == 0:
         # Previously only updated every 12th measurement
-        if counter % 1 == 0:
+        LOG_FREQ = 1  # TODO: do we need an if statement here?
+        if counter % LOG_FREQ == 0:
             file_print("Measuring ambient temperature and humidity")
-            #wx_rh, wx_temp, wx_tries = read_retry(rh_sensor)
-            #wx_rh = rh_sensor.relative_humidity
-            #wx_temp = rh_sensor.temperature
+
             try:
                 wx_rh, wx_temp = get_rh_temp(rh_sensor)
                 stats['wx_temp_air_c'] = wx_temp
@@ -483,9 +496,15 @@ while counter < (25*60*60/5):
                 stats['wx_temp_air_c'] = -999
                 stats['wx_rel_hum'] = -999
                 file_print("Error reading RH and T")
-                
             
-            tc_soil1_c, tc_soil2_c, tc_soil3_c, tc_amb_c, ppfd_mV, tc_black_c = tc.read_thermocouples(therm)
+            [   tc_soil1_c,
+                tc_soil2_c,
+                tc_soil3_c,
+                tc_amb_c,
+                ppfd_mV,
+                tc_black_c
+             ] = tc.read_thermocouples(therm)
+
             #stats['tc_soil1_c'] = tc_soil1_c
             #stats['tc_soil2_c'] = tc_soil2_c
             #stats['tc_soil3_c'] = tc_soil3_c
@@ -493,6 +512,7 @@ while counter < (25*60*60/5):
             stats['tc_black_c'] = tc_black_c
             stats['ppfd_mV_raw'] = ppfd_mV
             stats['ppfd_umol_m2_s'] = ppfd_mV*ppfd_calib
+
 #        if counter % 10 == 0:
 #            (wx_status, wx_vals) = wp.wx
 #            if (wx_status == True):
@@ -521,9 +541,7 @@ while counter < (25*60*60/5):
         # get current date
         stats['Date'] = datetime.datetime.now().strftime('%y%m%d-%H%M%S')
 
-
 #        file_print("**** Lat: %.3f Lon: %.3f Numsats: %d" % (stats["gps_latitude"], stats['gps_longitude'], stats['gps_num_satellites']))
-
 
         if counter % 12 == 0:
             file_print("Adjusting camera settings based on current T and RH")
@@ -544,7 +562,7 @@ while counter < (25*60*60/5):
 #            device.set_float_feature_value("AtmosphericTemperature",stat_atm_temp)
 #            device.set_float_feature_value("RelativeHumidity",stat_atm_rh)
 
-        # get camera stats
+        # get camera stats every twelth iteration
         if counter % 12 == 0:
             stats['AtmosphericTemperature'] = PySpin.CFloatPtr(nodemap.GetNode("AtmosphericTemperature")).GetValue()
             stats['EstimatedTransmission'] = PySpin.CFloatPtr(nodemap.GetNode("EstimatedTransmission")).GetValue()
@@ -612,14 +630,14 @@ while counter < (25*60*60/5):
 #            cv2.imwrite(fileprefix + '-infrared.png', imgscaledcolored)
 #            cv2.imwrite(fileprefix + "-visible.png",image_visible)
 
-
-            writer = csv.writer(open(fileprefix + '-stats.csv', 'w'),delimiter=',')
+            # Write data from global stats dictionary
+            writer = csv.writer(open(fileprefix + '-stats.csv', 'w'), delimiter=',')
             writer.writerow(stats.keys())
             writer.writerow(stats.values())
 #            os.chown(fileprefix + "-stats.csv", uid, gid)
 
             file_print("Summarizing data")
-            stat_mean = float(data_infrared.mean()) / 100.0 - 273.15 
+            stat_mean = float(data_infrared.mean()) / 100.0 - 273.15 # Temp conversion 
             file_print("Mean value = %.3f" % stat_mean)
 #            lcd.lcd_update("%d %.1f %.2f" % (counter, stat_mean, freedisk_gb),1)
 
@@ -629,9 +647,12 @@ while counter < (25*60*60/5):
 #            lcd.lcd_led_set(0,0)
 #            file_print('No buffer obtained')
 
-        counter = counter + 1
+        counter += 1
 
 # Deinitialize and release all cameras
+# TODO: run garbage collection checking
+# make sure all object references are cleaned up.
+#
 camera.EndAcquisition()
 camera.DeInit()
 del camera

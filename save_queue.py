@@ -5,6 +5,8 @@ import cv2
 import os
 import numpy
 
+# TODO: what script imports this?
+
 def image_worker():
     global save_queue
 

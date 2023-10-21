@@ -38,7 +38,6 @@ class RadiometricData:
 	m_R = 16671.9043
 	m_F = 1
 	m_B = 1430.1
-	
 
 	def __init__(self):
 		pass
@@ -88,7 +87,7 @@ class RadiometricData:
 			tao = TAO_COMP_MIN		# below min value, clip
 
 		elif (tao > TAO_COMP_MAX):
-			# check tao at 1 000 000 m dist
+			# check tao at 1_000_000 m dist
 			tao = X*math.exp(-(1.0E3)*a1b1sqH2O)+(1.0-X)*math.exp(-(1.0E3)*a2b2sqH2O)
 
 			# above max, staying up, assume \/-shape
