@@ -459,6 +459,7 @@ while counter < (TOTAL_RUNTIME):
 # TODO: run garbage collection checking
 # make sure all object references are cleaned up.
 
+camera.EndAcquisition()
 camera.DeInit()
 del camera
 cam_list.Clear()
